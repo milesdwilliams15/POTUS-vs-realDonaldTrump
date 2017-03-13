@@ -1,0 +1,490 @@
+
+path<-file.path("C:","Users","Miles","Documents","R","POTUS Tweets","realPOTUS.csv")
+pres<-read.csv(path)
+
+# Make sure the dates and times the tweets were created are in the 
+# right format.
+created<-as.character(pres$time)
+created<-t(as.data.frame(strsplit(created,' ')))
+row.names(created)=NULL
+pres<-cbind(pres,created)
+pres$Date<-pres$`1`
+pres$Time<-pres$`2`
+pres$Date<-as.Date(pres$Date,format='%d/%m/%Y')
+
+# Tweets by @POTUS and @realDonaldTrump
+library(ggplot2)
+library(plyr)
+count<-count(pres,c("Date","from_user"))
+windows()
+ggplot(count, aes(Date,freq,fill=from_user)) + geom_col() + theme_minimal() +
+  scale_fill_manual(values=c("blue","red")) +
+  ggtitle("Tweets by @POTUS and @RealDonaldTrump") +
+  xlab("Date Tweeted") + ylab("Total Number of Tweets") +
+  theme(plot.title=element_text(face="bold",size=16)) +
+  theme(text=element_text(family="serif")) +
+  scale_x_date(date_breaks = "1 day") +
+  theme(axis.text.x=element_text(angle=90,color="black")) +
+  theme(legend.position=c(.15,.9)) +
+  theme(legend.title = element_blank()) +
+  theme(legend.background = element_rect(color="black", size=.5)) +
+  theme(panel.grid.major.x=element_blank()) +
+  theme(panel.grid.minor.x=element_blank()) +
+  theme(panel.grid.major.y=element_line(colour="grey50",linetype=2))
+
+
+# Sentiment Analysis of @POTUS vs @realDonaldTrump
+library(syuzhet)
+pres$text<-as.character(pres$text)
+sent<-get_nrc_sentiment(pres$text)
+sent$sentiment<-sent$positive-sent$negative
+pres<-cbind(pres,sent)
+
+windows()
+ggplot(pres,aes(Date,sentiment,color=from_user)) +
+  geom_point(alpha=.5) + geom_jitter(width=.25) +
+  theme_minimal() +
+  scale_color_manual(values=c("blue","red")) +
+  ggtitle("Sentiment of @POTUS vs. @realDonaldTrump Tweets") +
+  theme(plot.subtitle=element_text(face="italic",size=14)) +
+  theme(plot.title=element_text(face="bold",size=16)) +
+  scale_x_date(date_breaks = "1 day") +
+  theme(axis.text.x=element_text(angle=90,color="black")) +
+  ylab("<- More Negative...More Positive ->") + xlab("Date Tweeted") +
+  theme(text=element_text(family="serif")) +
+  theme(legend.position=c(.15,.9)) +
+  theme(legend.title=element_blank()) +
+  theme(legend.background = element_rect(color="black", size=.5)) +
+  theme(panel.grid.major.x=element_blank()) +
+  theme(panel.grid.minor.x=element_blank()) +
+  theme(panel.grid.major.y=element_line(colour="grey50",linetype=2))
+
+windows()
+note<-"POTUS Mean = 0.49\nrealDonaldTrump Mean = 0.44\nt = 0.27\np = 0.79"
+ggplot(pres,aes(from_user,sentiment)) + coord_flip() +
+  geom_boxplot() + geom_jitter(width=.1) +
+  theme_minimal() +
+  ggtitle("Sentiment of @POTUS vs. @realDonaldTrump Tweets") +
+  theme(plot.title=element_text(face="bold",size=16)) +
+  theme(plot.subtitle=element_text(size=12, hjust=0, face="italic", color="black")) +
+  ylab("<- More Negative...More Positive ->") + xlab("") +
+  theme(text=element_text(family="serif")) +
+  theme(legend.background = element_rect(color="black", size=.5)) +
+  geom_label(aes(x=2.39, y=2, label=note),hjust=0,family="serif",size=3) +
+  theme(panel.grid.major.y=element_blank()) +
+  theme(panel.grid.minor.y=element_blank()) +
+  theme(panel.grid.major.x=element_line(colour="grey50",linetype=2))
+t.test(sentiment~from_user,data=pres)
+# Welch Two Sample t-test
+#
+# data:  sentiment by from_user
+# t = 0.47, df = 171.32, p-value = 0.64
+# alternative hypothesis: true difference in means is not equal to 0
+# 95 percent confidence interval:
+#   -0.32  0.51
+# sample estimates:
+#   mean in group POTUS mean in group realDonaldTrump 
+#                  0.56                          0.46 
+
+## tf-idf Analysis Based on @POTUS vs. @realDonaldTrump:
+library(tidytext)
+library(dplyr)
+tweets_words <- pres %>% unnest_tokens(word, text) %>%
+  count(from_user, word, sort = TRUE) %>%
+  ungroup()
+
+tweets_words <- tweets_words  %>% bind_tf_idf(word,from_user, n) %>%
+  arrange(desc(tf_idf)) %>%
+  mutate(word = factor(word, levels = rev(unique(word))))
+
+library(ggstance)
+library(ggthemes)
+tweets_words2 <- tweets_words %>% filter(from_user == "realDonaldTrump")
+windows()
+ggplot(tweets_words2[1:20,], aes(tf_idf, reorder(word,tf_idf), alpha=tf_idf)) +
+  theme_minimal() + geom_barh(stat = "identity", show.legend = FALSE, fill="red") + 
+  scale_alpha(range=c(.5,1)) +
+  ggtitle("Top tf-idf Words for @realDonaldTrump Tweets") +
+  ylab("") + xlab("tf-idf") +
+  scale_x_continuous(expand=c(0,0)) +
+  theme(strip.text=element_text(hjust=0)) +
+  theme(text=element_text(family="serif")) +
+  theme(plot.title=element_text(size=16, hjust=0, face="bold", color="black")) +
+  theme(legend.position = "none") +
+  theme(panel.grid.major.y=element_blank()) +
+  theme(panel.grid.minor.y=element_blank()) +
+  theme(panel.grid.major.x=element_line(colour="grey50",linetype=2))
+
+tweets_words3 <- tweets_words %>% filter(from_user == "POTUS")
+windows()
+ggplot(tweets_words3[1:20,], aes(tf_idf, reorder(word,tf_idf), alpha=tf_idf)) +
+  theme_minimal() + geom_barh(stat = "identity", show.legend = FALSE, fill="blue") +
+  scale_alpha(range=c(.5,1)) +
+  ggtitle("Top tf-idf Words for @POTUS Tweets") +
+  ylab("") + xlab("tf-idf") +
+  scale_x_continuous(expand=c(0,0)) +
+  theme(strip.text=element_text(hjust=0)) +
+  theme(text=element_text(family="serif")) +
+  theme(plot.title=element_text(size=16, hjust=0, face="bold", color="black")) +
+  theme(legend.position = "none") +
+  theme(panel.grid.major.y=element_blank()) +
+  theme(panel.grid.minor.y=element_blank()) +
+  theme(panel.grid.major.x=element_line(colour="grey50",linetype=2))
+
+## STM analysis of @POTUS and @realDonaldTrump Tweets
+library(stm)
+textPros<-textProcessor(documents=pres$text,metadata=data.frame(pres$sentiment,pres$from_user))
+
+presSTM<-stm(documents=textPros$documents,vocab=textPros$vocab,K=10,
+             prevalence=~textPros$meta$pres.sentiment+textPros$meta$pres.from_user,
+             content=~textPros$meta$pres.from_user)
+
+# Top words per topic
+windows()
+par(bty="n",family="serif")
+plot.STM(presSTM,type="labels",width=100,n=10,
+         main="",family="serif")
+title(main="Top 10 Highest Probability Words per Topic",adj=0)
+mtext("Based on Structural Topic Model Estimates",adj=0,font=3)
+
+# Top Topics
+topicNames<-c("Topic 1 - Promotion of Live Videos",
+              "Topic 2 - Hard Work",
+              "Topic 3 - New Security Advisor",
+              "Topic 4 - Health Care",
+              "Topic 5 - Press Core",
+              "Topic 6 - Russia",
+              "Topic 7 - Leaks",
+              "Topic 8 - Respect for Service",
+              "Topic 9 - Congratulations",
+              "Topic 10 - Media and FBI")
+windows()
+par(bty="n",col="grey40",lwd=20,family="serif",lend=3)
+plot.STM(presSTM,type="summary",
+         main="",xlab="Expected Topic Proportions",family="serif",custom.labels=topicNames,
+         topic.names="")
+title(main = "Top STM Identified Topics",adj=0)
+
+## Estimate Effects
+presEst<-estimateEffect(c(1:10)~pres.sentiment+pres.from_user,presSTM,
+                          metadata=textPros$meta)
+
+#########################################
+## Topic 1
+
+windows()
+par(bty="n",lwd=2,col="black",family="serif")
+plot.estimateEffect(presEst,                    #Topic proportions in @realDonaldTrump Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[1],
+                    method="continuous",
+                    xlab="Sentiment Valence",
+                    ylab="Expected Topic Proportions",
+                    main="",
+                    moderator="pres.from_user",
+                    moderator.value="realDonaldTrump",
+                    linecol="red",
+                    xlim=c(-3,5),
+                    printlegend=F)
+plot.estimateEffect(presEst,                    #Topic proportions in @POTUS Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[1],
+                    method="continuous",
+                    moderator="pres.from_user",
+                    moderator.value="POTUS",
+                    linecol="blue",
+                    printlegend=F,add=T)
+abline(v=0,lty=4,lwd=1,col="grey45")
+legend("top",legend=c("@realDonaldTrump","@POTUS"),col=c("red","blue"),
+       lty=1)
+title(main="Topic 1 - Promotion of Live Videos",adj=0)
+
+#########################################
+## Topic 2
+
+windows()
+par(bty="n",lwd=2,col="black",family="serif")
+plot.estimateEffect(presEst,                    #Topic proportions in @realDonaldTrump Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[2],
+                    method="continuous",
+                    xlab="Sentiment Valence",
+                    ylab="Expected Topic Proportions",
+                    main="",
+                    moderator="pres.from_user",
+                    moderator.value="realDonaldTrump",
+                    linecol="red",
+                    xlim=c(-3,5),
+                    printlegend=F)
+plot.estimateEffect(presEst,                    #Topic proportions in @POTUS Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[2],
+                    method="continuous",
+                    moderator="pres.from_user",
+                    moderator.value="POTUS",
+                    linecol="blue",
+                    printlegend=F,add=T)
+abline(v=0,lty=4,lwd=1,col="grey45")
+legend("topright",legend=c("@realDonaldTrump","@POTUS"),col=c("red","blue"),
+       lty=1)
+title(main="Topic 2 - Hard Work",adj=0)
+
+#########################################
+## Topic 3
+
+windows()
+par(bty="n",lwd=2,col="black",family="serif")
+plot.estimateEffect(presEst,                    #Topic proportions in @realDonaldTrump Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[3],
+                    method="continuous",
+                    xlab="Sentiment Valence",
+                    ylab="Expected Topic Proportions",
+                    main="",
+                    moderator="pres.from_user",
+                    moderator.value="realDonaldTrump",
+                    linecol="red",
+                    xlim=c(-3,5),
+                    printlegend=F)
+plot.estimateEffect(presEst,                    #Topic proportions in @POTUS Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[3],
+                    method="continuous",
+                    moderator="pres.from_user",
+                    moderator.value="POTUS",
+                    linecol="blue",
+                    printlegend=F,add=T)
+abline(v=0,lty=4,lwd=1,col="grey45")
+legend("topleft",legend=c("@realDonaldTrump","@POTUS"),col=c("red","blue"),
+       lty=1)
+title(main="Topic 3 - New Security Advisor",adj=0)
+
+#########################################
+## Topic 4
+
+windows()
+par(bty="n",lwd=2,col="black",family="serif")
+plot.estimateEffect(presEst,                    #Topic proportions in @realDonaldTrump Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[4],
+                    method="continuous",
+                    xlab="Sentiment Valence",
+                    ylab="Expected Topic Proportions",
+                    main="",
+                    moderator="pres.from_user",
+                    moderator.value="realDonaldTrump",
+                    linecol="red",
+                    xlim=c(-3,5),
+                    printlegend=F)
+plot.estimateEffect(presEst,                    #Topic proportions in @POTUS Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[4],
+                    method="continuous",
+                    moderator="pres.from_user",
+                    moderator.value="POTUS",
+                    linecol="blue",
+                    printlegend=F,add=T)
+abline(v=0,lty=4,lwd=1,col="grey45")
+legend("topright",legend=c("@realDonaldTrump","@POTUS"),col=c("red","blue"),
+       lty=1)
+title(main="Topic 4 - Health Care",adj=0)
+
+#########################################
+## Topic 5
+
+windows()
+par(bty="n",lwd=2,col="black",family="serif")
+plot.estimateEffect(presEst,                    #Topic proportions in @realDonaldTrump Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[5],
+                    method="continuous",
+                    xlab="Sentiment Valence",
+                    ylab="Expected Topic Proportions",
+                    main="",
+                    moderator="pres.from_user",
+                    moderator.value="realDonaldTrump",
+                    linecol="red",
+                    xlim=c(-3,5),
+                    printlegend=F)
+plot.estimateEffect(presEst,                    #Topic proportions in @POTUS Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[5],
+                    method="continuous",
+                    moderator="pres.from_user",
+                    moderator.value="POTUS",
+                    linecol="blue",
+                    printlegend=F,add=T)
+abline(v=0,lty=4,lwd=1,col="grey45")
+legend("topleft",legend=c("@realDonaldTrump","@POTUS"),col=c("red","blue"),
+       lty=1)
+title(main="Topic 5 - Press Core",adj=0)
+
+#########################################
+## Topic 6
+
+windows()
+par(bty="n",lwd=2,col="black",family="serif")
+plot.estimateEffect(presEst,                    #Topic proportions in @realDonaldTrump Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[6],
+                    method="continuous",
+                    xlab="Sentiment Valence",
+                    ylab="Expected Topic Proportions",
+                    main="",
+                    moderator="pres.from_user",
+                    moderator.value="realDonaldTrump",
+                    linecol="red",
+                    xlim=c(-3,5),ylim=c(0,.2),
+                    printlegend=F)
+plot.estimateEffect(presEst,                    #Topic proportions in @POTUS Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[6],
+                    method="continuous",
+                    moderator="pres.from_user",
+                    moderator.value="POTUS",
+                    linecol="blue",
+                    printlegend=F,add=T)
+abline(v=0,lty=4,lwd=1,col="grey45")
+legend("topright",legend=c("@realDonaldTrump","@POTUS"),col=c("red","blue"),
+       lty=1)
+title(main="Topic 6 - Russia",adj=0)
+
+#########################################
+## Topic 7
+
+windows()
+par(bty="n",lwd=2,col="black",family="serif")
+plot.estimateEffect(presEst,                    #Topic proportions in @realDonaldTrump Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[7],
+                    method="continuous",
+                    xlab="Sentiment Valence",
+                    ylab="Expected Topic Proportions",
+                    main="",
+                    moderator="pres.from_user",
+                    moderator.value="realDonaldTrump",
+                    linecol="red",
+                    xlim=c(-3,5),
+                    printlegend=F)
+plot.estimateEffect(presEst,                    #Topic proportions in @POTUS Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[7],
+                    method="continuous",
+                    moderator="pres.from_user",
+                    moderator.value="POTUS",
+                    linecol="blue",
+                    printlegend=F,add=T)
+abline(v=0,lty=4,lwd=1,col="grey45")
+legend("topleft",legend=c("@realDonaldTrump","@POTUS"),col=c("red","blue"),
+       lty=1)
+title(main="Topic 7 - Leaks",adj=0)
+
+#########################################
+## Topic 8
+
+windows()
+par(bty="n",lwd=2,col="black",family="serif")
+plot.estimateEffect(presEst,                    #Topic proportions in @realDonaldTrump Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[8],
+                    method="continuous",
+                    xlab="Sentiment Valence",
+                    ylab="Expected Topic Proportions",
+                    main="",
+                    moderator="pres.from_user",
+                    moderator.value="realDonaldTrump",
+                    linecol="red",
+                    xlim=c(-3,5),
+                    printlegend=F)
+plot.estimateEffect(presEst,                    #Topic proportions in @POTUS Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[8],
+                    method="continuous",
+                    moderator="pres.from_user",
+                    moderator.value="POTUS",
+                    linecol="blue",
+                    printlegend=F,add=T)
+abline(v=0,lty=4,lwd=1,col="grey45")
+legend("topleft",legend=c("@realDonaldTrump","@POTUS"),col=c("red","blue"),
+       lty=1)
+title(main="Topic 8 - Respect for Service",adj=0)
+
+#########################################
+## Topic 9
+
+windows()
+par(bty="n",lwd=2,col="black",family="serif")
+plot.estimateEffect(presEst,                    #Topic proportions in @realDonaldTrump Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[9],
+                    method="continuous",
+                    xlab="Sentiment Valence",
+                    ylab="Expected Topic Proportions",
+                    main="",
+                    moderator="pres.from_user",
+                    moderator.value="realDonaldTrump",
+                    linecol="red",
+                    xlim=c(-3,5),
+                    printlegend=F)
+plot.estimateEffect(presEst,                    #Topic proportions in @POTUS Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[9],
+                    method="continuous",
+                    moderator="pres.from_user",
+                    moderator.value="POTUS",
+                    linecol="blue",
+                    printlegend=F,add=T)
+abline(v=0,lty=4,lwd=1,col="grey45")
+legend("topleft",legend=c("@realDonaldTrump","@POTUS"),col=c("red","blue"),
+       lty=1)
+title(main="Topic 9 - Congratulations",adj=0)
+
+#########################################
+## Topic 10
+
+windows()
+par(bty="n",lwd=2,col="black",family="serif")
+plot.estimateEffect(presEst,                    #Topic proportions in @realDonaldTrump Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[10],
+                    method="continuous",
+                    xlab="Sentiment Valence",
+                    ylab="Expected Topic Proportions",
+                    main="",
+                    moderator="pres.from_user",
+                    moderator.value="realDonaldTrump",
+                    linecol="red",
+                    xlim=c(-3,5),
+                    printlegend=F)
+plot.estimateEffect(presEst,                    #Topic proportions in @POTUS Tweets
+                    covariate="pres.sentiment",
+                    model=presSTM,
+                    topics=presEst$topics[10],
+                    method="continuous",
+                    moderator="pres.from_user",
+                    moderator.value="POTUS",
+                    linecol="blue",
+                    printlegend=F,add=T)
+abline(v=0,lty=4,lwd=1,col="grey45")
+legend("topright",legend=c("@realDonaldTrump","@POTUS"),col=c("red","blue"),
+       lty=1)
+title(main="Topic 10 - Media and FBI",adj=0)
